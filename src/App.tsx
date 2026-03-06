@@ -25,6 +25,7 @@ import {
 } from './ai';
 import { PRACTICE_SYSTEM_PROMPT } from './prompts';
 import { GoogleGenerativeAI } from "@google/generative-ai";
+import { supabase } from './lib/supabase';
 
 export default function App() {
 
@@ -71,7 +72,12 @@ export default function App() {
   useEffect(() => {
     const loadData = async () => {
       try {
-        const response = await fetch('/api/data');
+        const { data: { session } } = await supabase.auth.getSession();
+        const response = await fetch('/api/data', {
+          headers: {
+            'Authorization': `Bearer ${session?.access_token}`
+          }
+        });
         if (response.ok) {
           const data = await response.json();
           setSavedExpressions(data.collection || []);
@@ -89,9 +95,15 @@ export default function App() {
   useEffect(() => {
     const saveData = async () => {
       try {
+        const { data: { session } } = await supabase.auth.getSession();
+        if (!session) return;
+
         await fetch('/api/save', {
           method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
+          headers: {
+            'Content-Type': 'application/json',
+            'Authorization': `Bearer ${session.access_token}`
+          },
           body: JSON.stringify({ type: 'collection', data: savedExpressions })
         });
       } catch (err) {
@@ -105,9 +117,15 @@ export default function App() {
   useEffect(() => {
     const saveData = async () => {
       try {
+        const { data: { session } } = await supabase.auth.getSession();
+        if (!session) return;
+
         await fetch('/api/save', {
           method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
+          headers: {
+            'Content-Type': 'application/json',
+            'Authorization': `Bearer ${session.access_token}`
+          },
           body: JSON.stringify({ type: 'practices', data: savedPractices })
         });
       } catch (err) {
@@ -121,9 +139,15 @@ export default function App() {
   useEffect(() => {
     const saveData = async () => {
       try {
+        const { data: { session } } = await supabase.auth.getSession();
+        if (!session) return;
+
         await fetch('/api/save', {
           method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
+          headers: {
+            'Content-Type': 'application/json',
+            'Authorization': `Bearer ${session.access_token}`
+          },
           body: JSON.stringify({ type: 'qa_history', data: qaHistory })
         });
       } catch (err) {
@@ -148,7 +172,13 @@ export default function App() {
   const handleReset = async () => {
     if (window.confirm('모든 데이터가 삭제됩니다. 계속하시겠습니까?')) {
       try {
-        await fetch('/api/reset', { method: 'POST' });
+        const { data: { session } } = await supabase.auth.getSession();
+        await fetch('/api/reset', {
+          method: 'POST',
+          headers: {
+            'Authorization': `Bearer ${session?.access_token}`
+          }
+        });
         window.location.reload();
       } catch (err) {
         alert('데이터 초기화에 실패했습니다.');

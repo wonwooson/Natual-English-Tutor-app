@@ -1,7 +1,7 @@
-import React from 'react';
-import { Languages, Trophy } from 'lucide-react';
+import { Languages, Trophy, LogOut } from 'lucide-react';
 import { clsx, type ClassValue } from 'clsx';
 import { twMerge } from 'tailwind-merge';
+import { supabase } from '../lib/supabase';
 
 function cn(...inputs: ClassValue[]) {
     return twMerge(clsx(inputs));
@@ -102,6 +102,14 @@ export const Header: React.FC<HeaderProps> = ({
                         <Trophy size={14} className="text-emerald-500" />
                         <span className="text-xs font-bold tracking-widest">50 POINTS</span>
                     </div>
+
+                    <button
+                        onClick={() => supabase.auth.signOut()}
+                        className="p-2 text-black/40 hover:text-red-500 hover:bg-red-50 rounded-lg transition-all"
+                        title="로그아웃"
+                    >
+                        <LogOut size={18} />
+                    </button>
                 </div>
             </div>
         </header>

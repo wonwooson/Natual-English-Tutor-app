@@ -1,8 +1,8 @@
-import express from "express";
+import express, { Request, Response, NextFunction } from "express";
 import { createServer as createViteServer } from "vite";
 import path from "path";
 import { fileURLToPath } from "url";
-import { createClient } from "@supabase/supabase-js";
+import { createClient, User } from "@supabase/supabase-js";
 import dotenv from "dotenv";
 
 dotenv.config();
@@ -15,18 +15,39 @@ const supabaseUrl = process.env.SUPABASE_URL || "";
 const supabaseKey = process.env.SUPABASE_KEY || "";
 const supabase = createClient(supabaseUrl, supabaseKey);
 
+interface AuthRequest extends Request {
+  user?: User;
+}
+
+// Auth Middleware: Verify user token and attach user to request
+const authenticateUser = async (req: AuthRequest, res: Response, next: NextFunction) => {
+  const token = req.headers.authorization?.split(" ")[1];
+  if (!token) return res.status(401).json({ error: "Unauthorized: No token provided" });
+
+  try {
+    const { data: { user }, error } = await supabase.auth.getUser(token);
+    if (error || !user) throw error || new Error("Invalid user");
+    req.user = user;
+    next();
+  } catch (error) {
+    console.error("Auth error:", error);
+    res.status(401).json({ error: "Unauthorized: Invalid token" });
+  }
+};
+
 async function startServer() {
   const app = express();
   const PORT = process.env.PORT || 3000;
 
   app.use(express.json());
 
-  // API Routes
-  app.get("/api/data", async (req, res) => {
+  // API Routes (Protected)
+  app.get("/api/data", authenticateUser as any, async (req: AuthRequest, res: Response) => {
     try {
-      const { data: collection } = await supabase.from("collection").select("data").eq("id", "main").single();
-      const { data: practices } = await supabase.from("practices").select("data").eq("id", "main").single();
-      const { data: qaHistory } = await supabase.from("qa_history").select("data").eq("id", "main").single();
+      const userId = req.user.id;
+      const { data: collection } = await supabase.from("collection").select("data").eq("user_id", userId).single();
+      const { data: practices } = await supabase.from("practices").select("data").eq("user_id", userId).single();
+      const { data: qaHistory } = await supabase.from("qa_history").select("data").eq("user_id", userId).single();
 
       res.json({
         collection: collection ? collection.data : [],
@@ -35,17 +56,17 @@ async function startServer() {
       });
     } catch (error) {
       console.error("Fetch error:", error);
-      // If table is empty or doesn't exist yet, return empty arrays
       res.json({ collection: [], practices: [], qaHistory: [] });
     }
   });
 
-  app.post("/api/save", async (req, res) => {
+  app.post("/api/save", authenticateUser as any, async (req: AuthRequest, res: Response) => {
     const { type, data } = req.body;
+    const userId = req.user.id;
     try {
       const { error } = await supabase
         .from(type)
-        .upsert({ id: "main", data: data });
+        .upsert({ user_id: userId, data: data }, { onConflict: 'user_id' });
 
       if (error) throw error;
       res.json({ success: true });
@@ -55,11 +76,12 @@ async function startServer() {
     }
   });
 
-  app.post("/api/reset", async (req, res) => {
+  app.post("/api/reset", authenticateUser as any, async (req: AuthRequest, res: Response) => {
+    const userId = req.user.id;
     try {
-      await supabase.from("collection").delete().eq("id", "main");
-      await supabase.from("practices").delete().eq("id", "main");
-      await supabase.from("qa_history").delete().eq("id", "main");
+      await supabase.from("collection").delete().eq("user_id", userId);
+      await supabase.from("practices").delete().eq("user_id", userId);
+      await supabase.from("qa_history").delete().eq("user_id", userId);
       res.json({ success: true });
     } catch (error) {
       console.error("Reset error:", error);
