@@ -1,4 +1,3 @@
-console.log("main.tsx: Starting React evaluation...");
 import { StrictMode } from 'react';
 import { createRoot } from 'react-dom/client';
 import App from './App.tsx';
