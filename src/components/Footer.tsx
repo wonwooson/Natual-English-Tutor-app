@@ -1,5 +1,5 @@
-import React from 'react';
-import { Languages, RotateCcw } from 'lucide-react';
+import { Languages, RotateCcw, LogOut } from 'lucide-react';
+import { supabase } from '../lib/supabase';
 
 interface FooterProps {
     handleReset: () => void;
@@ -14,6 +14,13 @@ export const Footer: React.FC<FooterProps> = ({ handleReset }) => {
                     <span className="text-xs font-medium uppercase tracking-widest">Natural English Tutor</span>
                 </div>
                 <div className="flex gap-8 items-center">
+                    <button
+                        onClick={() => supabase.auth.signOut()}
+                        className="flex items-center gap-1.5 text-xs font-medium text-emerald-600 hover:text-emerald-700 transition-colors uppercase tracking-widest"
+                    >
+                        <LogOut size={12} />
+                        Logout
+                    </button>
                     <button
                         onClick={handleReset}
                         className="flex items-center gap-1.5 text-xs font-medium text-red-400/60 hover:text-red-500 transition-colors uppercase tracking-widest"
