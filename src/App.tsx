@@ -31,9 +31,18 @@ export default function App() {
 
   const [scenario, setScenario] = useState('');
   const [results, setResults] = useState<Expression[]>([]);
-  const [savedExpressions, setSavedExpressions] = useState<Expression[]>([]);
-  const [savedPractices, setSavedPractices] = useState<SavedPractice[]>([]);
-  const [qaHistory, setQAHistory] = useState<QAMessage[]>([]);
+  const [savedExpressions, setSavedExpressions] = useState<Expression[]>(() => {
+    const saved = localStorage.getItem('saved_expressions');
+    return saved ? JSON.parse(saved) : [];
+  });
+  const [savedPractices, setSavedPractices] = useState<SavedPractice[]>(() => {
+    const saved = localStorage.getItem('saved_practices');
+    return saved ? JSON.parse(saved) : [];
+  });
+  const [qaHistory, setQAHistory] = useState<QAMessage[]>(() => {
+    const saved = localStorage.getItem('qa_history');
+    return saved ? JSON.parse(saved) : [];
+  });
   const [activeTab, setActiveTab] = useState<'home' | 'practice_box' | 'save_box' | 'qa'>('home');
   const [isLoading, setIsLoading] = useState(false);
   const [qaInput, setQAInput] = useState('');
@@ -68,94 +77,137 @@ export default function App() {
     isPlayingAllRef.current = isPlayingAll;
   }, [isPlayingAll]);
 
-  // Load data from backend
+  const [isDataReady, setIsDataReady] = useState(false);
+
+  // Load data from backend and Merge with LocalStorage
   useEffect(() => {
     const loadData = async () => {
+      console.log("🔄 Initializing data load...");
       try {
         const { data: { session } } = await supabase.auth.getSession();
+        if (!session) {
+          console.log("📴 No session found, using local data only.");
+          setIsDataReady(true);
+          return;
+        }
+
         const response = await fetch('/api/data', {
           headers: {
             'Authorization': `Bearer ${session?.access_token}`
           }
         });
+
         if (response.ok) {
           const data = await response.json();
-          setSavedExpressions(data.collection || []);
-          setSavedPractices(data.practices || []);
-          setQAHistory(data.qaHistory || []);
+          console.log("📥 Data received from server:", data);
+
+          if (data.collection) {
+            setSavedExpressions(prev => {
+              const merged = [...data.collection];
+              prev.forEach(item => {
+                if (!merged.find(m => m.id === item.id)) merged.push(item);
+              });
+              return merged;
+            });
+          }
+          if (data.practices) {
+            setSavedPractices(prev => {
+              const merged = [...data.practices];
+              prev.forEach(item => {
+                if (!merged.find(m => m.id === item.id)) merged.push(item);
+              });
+              return merged;
+            });
+          }
+          if (data.qaHistory) {
+            setQAHistory(prev => {
+              const merged = [...data.qaHistory];
+              prev.forEach(item => {
+                if (!merged.find(m => m.timestamp === item.timestamp && m.content === item.content)) {
+                  merged.push(item);
+                }
+              });
+              return merged.sort((a, b) => (b.timestamp || 0) - (a.timestamp || 0));
+            });
+          }
+          console.log("✅ Server and local data merged.");
+        } else {
+          console.warn("⚠️ Failed to fetch from server:", response.status);
         }
       } catch (err) {
-        console.error("Failed to load data from server", err);
+        console.error("❌ Failed to load data from server", err);
+      } finally {
+        setIsDataReady(true);
+        console.log("🚀 App data is now READY.");
       }
     };
     loadData();
   }, []);
 
-  // Sync with backend - Collection
+  // Sync with localStorage (only after ready)
   useEffect(() => {
-    const saveData = async () => {
-      try {
-        const { data: { session } } = await supabase.auth.getSession();
-        if (!session) return;
+    if (!isDataReady) return;
+    try {
+      localStorage.setItem('saved_expressions', JSON.stringify(savedExpressions));
+    } catch (e) {
+      console.error("LocalStorage Save Error (Expressions):", e);
+    }
+  }, [savedExpressions, isDataReady]);
 
-        await fetch('/api/save', {
-          method: 'POST',
-          headers: {
-            'Content-Type': 'application/json',
-            'Authorization': `Bearer ${session.access_token}`
-          },
-          body: JSON.stringify({ type: 'collection', data: savedExpressions })
-        });
-      } catch (err) {
-        console.error("Failed to save collection", err);
-      }
-    };
-    if (savedExpressions.length > 0) saveData();
-  }, [savedExpressions]);
-
-  // Sync with backend - Practices
   useEffect(() => {
-    const saveData = async () => {
-      try {
-        const { data: { session } } = await supabase.auth.getSession();
-        if (!session) return;
+    if (!isDataReady) return;
+    try {
+      localStorage.setItem('saved_practices', JSON.stringify(savedPractices));
+    } catch (e) {
+      console.error("LocalStorage Save Error (Practices):", e);
+    }
+  }, [savedPractices, isDataReady]);
 
-        await fetch('/api/save', {
-          method: 'POST',
-          headers: {
-            'Content-Type': 'application/json',
-            'Authorization': `Bearer ${session.access_token}`
-          },
-          body: JSON.stringify({ type: 'practices', data: savedPractices })
-        });
-      } catch (err) {
-        console.error("Failed to save practices", err);
-      }
-    };
-    if (savedPractices.length > 0) saveData();
-  }, [savedPractices]);
-
-  // Sync with backend - QA
   useEffect(() => {
-    const saveData = async () => {
-      try {
-        const { data: { session } } = await supabase.auth.getSession();
-        if (!session) return;
+    if (!isDataReady) return;
+    try {
+      localStorage.setItem('qa_history', JSON.stringify(qaHistory));
+    } catch (e) {
+      console.error("LocalStorage Save Error (QA):", e);
+    }
+  }, [qaHistory, isDataReady]);
 
-        await fetch('/api/save', {
-          method: 'POST',
-          headers: {
-            'Content-Type': 'application/json',
-            'Authorization': `Bearer ${session.access_token}`
-          },
-          body: JSON.stringify({ type: 'qa_history', data: qaHistory })
-        });
-      } catch (err) {
-        console.error("Failed to save QA history", err);
+  // Sync with backend - ONLY after data is ready and if we have a valid session
+  const saveToServer = async (type: string, data: any) => {
+    if (!isDataReady) return;
+    try {
+      const { data: { session } } = await supabase.auth.getSession();
+      if (!session) return;
+
+      const response = await fetch('/api/save', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${session.access_token}`
+        },
+        body: JSON.stringify({ type, data })
+      });
+
+      const result = await response.json();
+      if (!result.success) {
+        console.warn(`📡 [${type}] Server save skipped: ${result.warning || result.error}`);
       }
-    };
-    if (qaHistory.length > 0) saveData();
-  }, [qaHistory]);
+    } catch (err) {
+      console.error(`❌ [${type}] Network error during sync:`, err);
+    }
+  };
+
+  useEffect(() => {
+    if (isDataReady) saveToServer('collection', savedExpressions);
+  }, [savedExpressions, isDataReady]);
+
+  useEffect(() => {
+    if (isDataReady) saveToServer('practices', savedPractices);
+  }, [savedPractices, isDataReady]);
+
+  useEffect(() => {
+    if (isDataReady) saveToServer('qa_history', qaHistory);
+  }, [qaHistory, isDataReady]);
 
   // Keyboard shortcuts
   useEffect(() => {
@@ -179,6 +231,7 @@ export default function App() {
             'Authorization': `Bearer ${session?.access_token}`
           }
         });
+        localStorage.clear();
         window.location.reload();
       } catch (err) {
         alert('데이터 초기화에 실패했습니다.');
