@@ -78,6 +78,7 @@ export default function App() {
   }, [isPlayingAll]);
 
   const [isDataReady, setIsDataReady] = useState(false);
+  const [syncStatus, setSyncStatus] = useState<'connected' | 'local' | 'error'>('local');
 
   // Load data from backend and Merge with LocalStorage
   useEffect(() => {
@@ -87,6 +88,7 @@ export default function App() {
         const { data: { session } } = await supabase.auth.getSession();
         if (!session) {
           console.log("📴 No session found, using local data only.");
+          setSyncStatus('local');
           setIsDataReady(true);
           return;
         }
@@ -100,6 +102,7 @@ export default function App() {
         if (response.ok) {
           const data = await response.json();
           console.log("📥 Data received from server:", data);
+          setSyncStatus('connected');
 
           if (data.collection) {
             setSavedExpressions(prev => {
@@ -133,9 +136,11 @@ export default function App() {
           console.log("✅ Server and local data merged.");
         } else {
           console.warn("⚠️ Failed to fetch from server:", response.status);
+          setSyncStatus('error');
         }
       } catch (err) {
         console.error("❌ Failed to load data from server", err);
+        setSyncStatus('error');
       } finally {
         setIsDataReady(true);
         console.log("🚀 App data is now READY.");
@@ -191,9 +196,14 @@ export default function App() {
       const result = await response.json();
       if (!result.success) {
         console.warn(`📡 [${type}] Server save skipped: ${result.warning || result.error}`);
+        if (result.warning?.includes("not configured")) setSyncStatus('local');
+        else setSyncStatus('error');
+      } else {
+        setSyncStatus('connected');
       }
     } catch (err) {
       console.error(`❌ [${type}] Network error during sync:`, err);
+      setSyncStatus('error');
     }
   };
 
@@ -576,7 +586,7 @@ export default function App() {
         )}
       </AnimatePresence>
 
-      <Footer handleReset={handleReset} />
+      <Footer handleReset={handleReset} syncStatus={syncStatus} />
     </div>
   );
 }
